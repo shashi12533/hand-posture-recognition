@@ -1,0 +1,128 @@
+% This code calculate the divergence matrix from array of images in the
+% data set and plot a fancy plot.
+
+clear
+clc
+close all
+
+% addpath to Dcs folder
+addpath('./cal_div_KL_CS');
+
+% User define
+Ns = 100; % number of samples for Dkl stochastic Integration
+ext_of_interest = '.bmp';
+n_sample_display = 2; % number of samples you want to show for each posture
+%% ------ retrieve the image filename -----
+image_list = [];
+for symbol_folder = ['A','B','C','D','G','H','I','L','V','Y']; %['A','B','C','D','G','H','I','L','V','Y']
+    dirName = ['./train/',symbol_folder]; % dir of images
+    addpath(dirName); % path of image
+    % --- list all the files in the directory
+    fileList = fn_getAllFiles(dirName);
+    image_list_tmp = cell(length(fileList),1);
+    cnt_ext = 1; % counter for extension
+    for i = 1:length(fileList)
+        [pathstr, name, ext] = fileparts(fileList{i});
+        if strcmp(ext_of_interest,ext)
+        image_list_tmp{cnt_ext} = name;
+        cnt_ext = cnt_ext + 1;
+        end
+    end
+    if cnt_ext-1 > n_sample_display
+        image_list_tmp = image_list_tmp(1:n_sample_display,1);
+    else
+        image_list_tmp = image_list_tmp(1:cnt_ext-1,1);
+    end
+    image_list = [image_list;image_list_tmp];
+end
+
+
+
+%%
+TOC_Dcs_acc = 0;
+TOC_Dkl_MC_acc = 0;
+
+n_img = size(image_list,1);
+
+Dcs_matrix = zeros(n_img,n_img); 
+Dkl_MC_matrix = zeros(n_img,n_img); 
+
+cnt_row = 1;
+cnt_col = 1;
+
+for img_q = 1:n_img % accross row
+    filename_q = image_list{img_q};
+    % load the data
+    load([filename_q,'_data']); qDist = gmmDist;
+    cnt_col = 1;
+    for img_p = 1:n_img % accross column
+        filename_p = image_list{img_p};
+        % load the data
+        load([filename_p,'_data']); pDist = gmmDist;
+        
+        % Calculate Cauchy Schwarz divergence using our method
+        tic;
+        Dcs = CSDivGMM(qDist,pDist);
+        TOC_Dcs = toc;
+        TOC_Dcs_acc = TOC_Dcs_acc + TOC_Dcs; 
+        disp(['Dcs = ',num2str(Dcs),'   runtime: ',num2str(TOC_Dcs),' sec']);
+        
+        % Calculate GMM with stochastic integration
+        tic;
+        Dkl_MC = KLDivMCGMM(qDist,pDist,Ns);
+        TOC_Dkl_MC = toc;
+        TOC_Dkl_MC_acc = TOC_Dkl_MC_acc + TOC_Dcs;
+        disp(['Dkl_MC = ',num2str(Dkl_MC),'   runtime: ',num2str(TOC_Dkl_MC),' sec']);
+        
+        % put them in a matrix
+        Dcs_matrix(cnt_row,cnt_col) = Dcs;
+        Dkl_MC_matrix(cnt_row,cnt_col) = Dkl_MC;
+        
+        cnt_col = cnt_col+1;
+    end
+    cnt_row = cnt_row+1;
+end
+
+disp(['Total runtime Dcs: ',num2str(TOC_Dcs_acc),' sec']);
+disp(['Total runtime Dcs: ',num2str(TOC_Dkl_MC_acc),' sec']);
+
+% Easy plot
+figure; imagesc(Dcs_matrix); 
+title('D_{CS}'); daspect([1 1 1]); xlabel('dist_p'); ylabel('dist_q'); colormap('gray'); colorbar;
+print('-depsc','-r200',['Dcs_matrix_exp1.eps']);
+print('-djpeg','-r200',['Dcs_matrix_exp1.jpg']);
+
+figure; imagesc(Dkl_MC_matrix); 
+title('D_{KL}'); daspect([1 1 1]); xlabel('dist_p'); ylabel('dist_q'); colormap('gray'); colorbar;
+print('-depsc','-r200',['Dkl_MC_matrix_exp1.eps']);
+print('-djpeg','-r200',['Dkl_MC_matrix_exp1.jpg']);
+
+%% Fancy plot
+% figure;
+% edge_subplot_ind = [1:n_img+1,n_img+2:n_img+1:(n_img+1)^2];
+% subplot(n_img+1,n_img+1,setdiff(1:(n_img+1)^2,edge_subplot_ind)); imagesc(Dcs_matrix); 
+% set(gca,'xtick',[],'ytick',[]);
+% % daspect([1 1 1]);
+% colormap('gray'); colorbar; caxis([0 1]);
+% 
+% % Column-accross image
+% cnt = 1;
+% for col = [2:n_img+1]
+%     filename_q = image_list{cnt};
+%     subplot(n_img+1,n_img+1,col);
+%     imshow([filename_q,'.bmp']);
+%     cnt = cnt + 1;
+% end
+% 
+% % Row-accross image
+% cnt = 1;
+% for row = [n_img+2:n_img+1:(n_img+1)^2]
+%     filename_q = image_list{cnt};
+%     subplot(n_img+1,n_img+1,row);
+%     imshow([filename_q,'.bmp']);
+%     cnt = cnt + 1;
+% end
+%     
+% print('-depsc','-r200',['Dcs_matrix_exp1.eps']);
+% print('-djpeg','-r200',['Dcs_matrix_exp1.jpg']);
+
